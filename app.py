@@ -3,49 +3,55 @@ from flask import Flask, render_template, Response
 import cv2
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import load_model
+from tensorflow.keras.models import load_model, Sequential
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
 import mediapipe as mp
 from collections import deque, Counter
 
 app = Flask(__name__)
 
-# Load model with error handling and compatibility fixes
+# Load model with enhanced error handling and compatibility
 try:
-    # Try loading with Keras 3.0+ compatibility settings
-    model = tf.keras.models.load_model('newerfacemodel.keras', compile=False)
-    print("✅ Model loaded successfully in .keras format")
+    # Try loading with explicit kwargs for compatibility
+    model = tf.keras.models.load_model(
+        'newerfacemodel_v2.keras',
+        compile=False,
+        custom_objects=None
+    )
+    print("✅ Model loaded successfully (v2 .keras format)")
 except Exception as e:
-    print(f"⚠️ Error loading .keras model: {e}")
+    print(f"⚠️ Error loading v2 .keras model: {e}")
     try:
-        # Fallback to H5 format if available
-        model = tf.keras.models.load_model('newerfacemodel.h5', compile=False)
-        print("✅ Model loaded successfully in .h5 format")
+        # Fallback to H5 format with explicit settings
+        model = tf.keras.models.load_model(
+            'newerfacemodel.h5',
+            compile=False
+        )
+        print("✅ Model loaded successfully (.h5 format)")
     except Exception as e:
         print(f"⚠️ Error loading .h5 model: {e}")
-        # Create minimal dummy model if both fail
-        from tensorflow.keras.models import Sequential
-        from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+        # Create minimal dummy model with correct input shape
         model = Sequential([
             Conv2D(32, (3,3), activation='relu', input_shape=(48,48,1)),
             MaxPooling2D((2,2)),
             Flatten(),
             Dense(7, activation='softmax')
         ])
-        print("⚠️ Created dummy model for testing - real emotions won't be detected")
+        print("⚠️ Created dummy model - limited functionality")
 
 emotion_labels = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 
-# MediaPipe setup (module reference only)
+# MediaPipe setup - module reference only
 mp_face_detection = mp.solutions.face_detection
 
 def generate_frames(camera_active):
-    # Initialize MediaPipe for this session
+    # Initialize MediaPipe with context manager
     with mp_face_detection.FaceDetection(
         min_detection_confidence=0.5,
         model_selection=1  # 0=short-range, 1=full-range
     ) as face_detection:
         
-        # Camera setup
+        # Camera setup with explicit resolution
         camera = cv2.VideoCapture(0)
         camera.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -60,23 +66,23 @@ def generate_frames(camera_active):
                 if not success:
                     break
                 
-                # Mirror the frame
+                # Mirror the frame horizontally
                 frame = cv2.flip(frame, 1)
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 
-                # Detect faces
+                # Detect faces with MediaPipe
                 results = face_detection.process(rgb_frame)
                 ih, iw, _ = frame.shape
 
                 if results.detections:
                     for detection in results.detections:
-                        # Get face bounding box
+                        # Extract face bounding box with padding
                         bboxC = detection.location_data.relative_bounding_box
                         x = int(bboxC.xmin * iw)
                         y = int(bboxC.ymin * ih)
                         w = int(bboxC.width * iw)
                         h = int(bboxC.height * ih)
-
+                        
                         # Add 10% padding
                         pad_x, pad_y = int(0.1 * w), int(0.1 * h)
                         x1, y1 = max(0, x-pad_x), max(0, y-pad_y)
@@ -93,7 +99,7 @@ def generate_frames(camera_active):
                             normalized_face = resized_face / 255.0
                             input_face = np.expand_dims(normalized_face, axis=(0, -1))
 
-                            # Predict emotion
+                            # Predict emotion with error handling
                             emotion_predictions = model.predict(input_face, verbose=0)
                             emotion_index = np.argmax(emotion_predictions)
                             emotion = emotion_labels[emotion_index]
@@ -111,7 +117,7 @@ def generate_frames(camera_active):
                                 if emo == common_emotion
                             ])
 
-                            # Draw UI elements
+                            # Draw bounding box and emotion label
                             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
                             y_offset = y1 - 10 if y1 - 10 > 10 else y2 + 30
                             cv2.putText(
