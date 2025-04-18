@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: emovision-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: ./start.sh
+    envVars:
+      - key: PORT
+        value: 10000
+    healthCheckPath: /health
